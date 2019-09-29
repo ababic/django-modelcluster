@@ -765,33 +765,65 @@ class ParentalM2MTest(TestCase):
 
 
 class PrefetchRelatedTest(TestCase):
-    def test_fakequeryset_prefetch_related(self):
-        person1 = Person.objects.create(name='Joe')
-        person2 = Person.objects.create(name='Mary')
+    def setUp(self):
+        self.person1 = Person.objects.create(name='Joe')
+        self.person2 = Person.objects.create(name='Mary')
 
         # Set main_room for each house before creating the next one for
         # databases where supports_nullable_unique_constraints is False.
 
-        house1 = House.objects.create(name='House 1', address='123 Main St', owner=person1)
+        self.house1 = House.objects.create(name='House 1', address='123 Main St', owner=self.person1)
         room1_1 = Room.objects.create(name='Dining room')
         room1_2 = Room.objects.create(name='Lounge')
         room1_3 = Room.objects.create(name='Kitchen')
-        house1.main_room = room1_1
-        house1.save()
+        self.house1.main_room = room1_1
+        self.house1.save()
 
-        house2 = House(name='House 2', address='45 Side St', owner=person1)
+        self.house2 = House(name='House 2', address='45 Side St', owner=self.person1)
         room2_1 = Room.objects.create(name='Eating room')
         room2_2 = Room.objects.create(name='TV Room')
         room2_3 = Room.objects.create(name='Bathroom')
-        house2.main_room = room2_1
+        self.house2.main_room = room2_1
+        self.house2.save()
 
-        person1.houses = itertools.chain(House.objects.all(), [house2])
+        self.person1.houses = [self.house1, self.house2]
+        self.person1.save()
 
-        houses = person1.houses.all()
+        self.house3 = House(name='House 3', address='79 Middle St', owner=self.person2)
+        room3_1 = Room.objects.create(name='Wine Cellar')
+        room3_2 = Room.objects.create(name='Billiard Room')
+        room3_3 = Room.objects.create(name='Study')
+        self.house3.main_room = room3_1
+        self.house3.save()
+
+        self.person2.houses = [self.house3]
+        self.person2.save()
+
+    def test_parentalmanytomany_prefetch_related(self):
+        with self.assertNumQueries(2):
+            lists = [list(person.houses.all()) for person in Person.objects.prefetch_related('houses')]
+        normal_lists = [list(person.members.all()) for person in Person.objects.all()]
+        self.assertEqual(lists, normal_lists)
+
+    def test_prefetch_related_with_custom_queryset(self):
+        from django.db.models import Prefetch
+
+        with self.assertNumQueries(2):
+            lists = [
+                list(person.houses.all())
+                for person in Person.objects.prefetch_related(
+                    Prefetch('houses', queryset=House.objects.filter(address__startswith='123'))
+                )
+            ]
+        normal_lists = [list(person.houses.filter(address__startswith='123')) for person in Person.objects.all()]
+        self.assertEqual(lists, normal_lists)
+
+    def test_fakequeryset_prefetch_related(self):
+        houses = self.person1.houses.all()
 
         with self.assertNumQueries(1):
-            qs = person1.houses.prefetch_related('main_room')
+            qs = self.person1.houses.prefetch_related('main_room')
 
         with self.assertNumQueries(0):
-            main_rooms = [ house.main_room for house in person1.houses.all() ]
-            self.assertEqual(len(main_rooms), 2)
+            main_rooms = [ house.main_room for house in self.person1.houses.all() ]
+            self.assertEqual(len(main_rooms), 3)
