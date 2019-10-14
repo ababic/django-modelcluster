@@ -361,6 +361,17 @@ def create_deferring_forward_many_to_many_manager(rel, original_manager_cls):
                 False,
             )
 
+        def _apply_rel_filters(self, queryset):
+            # Implemented as empty for compatibility sake
+            # But there is probably a better implementation of this function
+            return queryset._next_is_sticky()
+
+        def _remove_prefetched_objects(self):
+            try:
+                self.instance._prefetched_objects_cache.pop(self.prefetch_cache_name)
+            except (AttributeError, KeyError):
+                pass  # nothing to clear from cache
+
         def get_object_list(self):
             """
             return the mutable list that forms the current in-memory state of
@@ -383,6 +394,7 @@ def create_deferring_forward_many_to_many_manager(rel, original_manager_cls):
             Add the passed items to the stored object set, but do not commit them
             to the database
             """
+            self._remove_prefetched_objects()
             items = self.get_object_list()
 
             for target in new_items:
@@ -411,6 +423,7 @@ def create_deferring_forward_many_to_many_manager(rel, original_manager_cls):
             """
             Clear the stored object set, without affecting the database
             """
+            self._remove_prefetched_objects()
             self.set([])
 
         def set(self, objs, bulk=True, clear=False):
@@ -432,6 +445,7 @@ def create_deferring_forward_many_to_many_manager(rel, original_manager_cls):
             Remove the passed items from the stored object set, but do not commit the change
             to the database
             """
+            self._remove_prefetched_objects()
             items = self.get_object_list()
 
             # filter items list in place: see http://stackoverflow.com/a/1208792/1853523
