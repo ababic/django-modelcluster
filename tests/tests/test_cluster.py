@@ -802,7 +802,7 @@ class PrefetchRelatedTest(TestCase):
     def test_parentalmanytomany_prefetch_related(self):
         with self.assertNumQueries(2):
             lists = [list(person.houses.all()) for person in Person.objects.prefetch_related('houses')]
-        normal_lists = [list(person.members.all()) for person in Person.objects.all()]
+        normal_lists = [list(person.houses.all()) for person in Person.objects.all()]
         self.assertEqual(lists, normal_lists)
 
     def test_prefetch_related_with_custom_queryset(self):
