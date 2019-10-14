@@ -1,7 +1,7 @@
 from __future__ import unicode_literals
 
 from django.core import checks
-from django.db import IntegrityError, router
+from django.db import connections, IntegrityError, router
 from django.db.models import CASCADE
 from django.db.models.fields.related import ForeignKey, ManyToManyField
 from django.utils.functional import cached_property
@@ -316,6 +316,46 @@ def create_deferring_forward_many_to_many_manager(rel, original_manager_cls):
                     return rel_model.objects.none()
 
             return FakeQuerySet(rel_model, results)
+
+        def get_prefetch_queryset(self, instances, queryset=None):
+            if queryset is None:
+                db = self._db or router.db_for_read(self.model, instance=instances[0])
+                queryset = super(DeferringManyRelatedManager, self).get_queryset().using(db)
+
+            queryset._add_hints(instance=instances[0])
+            queryset = queryset.using(queryset._db or self._db)
+
+            query = {'%s__in' % self.query_field_name: instances}
+            queryset = queryset._next_is_sticky().filter(**query)
+
+            # M2M: need to annotate the query in order to get the primary model
+            # that the secondary model was actually related to. We know that
+            # there will already be a join on the join table, so we can just
+            # add the select.
+
+            # For non-autocreated 'through' models, can't assume we are
+            # dealing with PK values.
+            fk = self.through._meta.get_field(self.source_field_name)
+            join_table = fk.model._meta.db_table
+            connection = connections[queryset.db]
+            qn = connection.ops.quote_name
+            queryset = queryset.extra(select={
+                '_prefetch_related_val_%s' % f.attname:
+                '%s.%s' % (qn(join_table), qn(f.column)) for f in fk.local_related_fields})
+            return (
+                queryset,
+                lambda result: tuple(
+                    getattr(result, '_prefetch_related_val_%s' % f.attname)
+                    for f in fk.local_related_fields
+                ),
+                lambda inst: tuple(
+                    f.get_db_prep_value(getattr(inst, f.attname), connection)
+                    for f in fk.foreign_related_fields
+                ),
+                False,
+                self.prefetch_cache_name,
+                False,
+            )
 
         def get_object_list(self):
             """
