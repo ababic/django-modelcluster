@@ -280,6 +280,10 @@ def create_deferring_forward_many_to_many_manager(rel, original_manager_cls):
             super(DeferringManyRelatedManager, self).__init__()
             self.model = rel_model
             self.instance = instance
+            self.query_field_name = rel.field.related_query_name()
+            self.prefetch_cache_name = rel.field.name
+            self.source_field_name = rel.field.m2m_field_name()
+            self.through = rel.through
 
         def get_original_manager(self):
             return original_manager_cls(self.instance)
