@@ -822,8 +822,5 @@ class PrefetchRelatedTest(TestCase):
         houses = self.person1.houses.all()
 
         with self.assertNumQueries(1):
-            qs = self.person1.houses.prefetch_related('main_room')
-
-        with self.assertNumQueries(0):
-            main_rooms = [ house.main_room for house in self.person1.houses.all() ]
+            main_rooms = [ house.main_room for house in self.person1.houses.prefetch_related('main_room') ]
             self.assertEqual(len(main_rooms), 3)
