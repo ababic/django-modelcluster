@@ -481,6 +481,14 @@ class FakeQuerySet(object):
         # has no meaningful effect on non-db querysets
         return self
 
+    def only(self, *args):
+        # has no meaningful effect on non-db querysets
+        return self
+
+    def defer(self, *args):
+        # has no meaningful effect on non-db querysets
+        return self
+
     def prefetch_related(self, *args):
         prefetch_related_objects(self.results, *args)
         return self
@@ -501,6 +509,28 @@ class FakeQuerySet(object):
         else:
             clone.iterable_class = ValuesListIterable
         return clone
+
+    def in_bulk(self, id_list=None, *, field_name='pk'):
+        opts = self.model._meta
+        unique_fields = [
+            constraint.fields[0]
+            for constraint in opts.total_unique_constraints
+            if len(constraint.fields) == 1
+        ]
+        if (
+            field_name != 'pk' and
+            not opts.get_field(field_name).unique and
+            field_name not in unique_fields
+        ):
+            raise ValueError("in_bulk()'s field_name must be a unique field but %r isn't." % field_name)
+        if id_list is not None:
+            if not id_list:
+                return {}
+            id_list = tuple(id_list)
+        return {
+            extract_field_value(obj, field_name): obj
+            for obj in self.results if id_list is None or extract_field_value(obj, field_name) in id_list
+        }
 
     def order_by(self, *fields):
         clone = self._clone(self.results[:])
@@ -525,6 +555,9 @@ class FakeQuerySet(object):
     def __iter__(self):
         iterator = self.iterable_class(self)
         yield from iterator
+
+    def iterator(self):
+        yield from self
 
     def __nonzero__(self):
         return bool(self.results)
