@@ -468,12 +468,14 @@ class FakeQuerySet(object):
         return bool(self.results)
 
     def first(self):
-        if self.results:
-            return self.results[0]
+        for result in self:
+            return result
 
     def last(self):
         if self.results:
-            return self.results[-1]
+            clone = self._clone(reversed(self.results))
+            for result in clone:
+                return result
 
     def select_related(self, *args):
         # has no meaningful effect on non-db querysets
