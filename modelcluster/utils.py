@@ -169,6 +169,16 @@ def extract_field_value(obj, key, pk_only=False, suppress_fielddoesnotexist=Fals
     return value
 
 
+def convert_raw_value(field, value):
+    # convert value to the correct python type
+    if hasattr(field, '_convert_raw'):
+        # get_model_field() sets this when a derivative of date, time, or datetime
+        # has been requested
+        return field._convert_raw(value)
+    # use the built-in method for the field
+    return field.to_python(value)
+
+
 def sort_by_fields(items, fields):
     """
     Sort a list of objects on the given fields. The field list works analogously to

@@ -1,11 +1,10 @@
 from __future__ import unicode_literals
 
-import datetime
 import re
 
 from django.db.models import Model, prefetch_related_objects
 
-from modelcluster.utils import extract_field_value, get_model_field, sort_by_fields
+from modelcluster.utils import convert_raw_value, extract_field_value, get_model_field, sort_by_fields
 
 
 # Constructor for test functions that determine whether an object passes some boolean condition
@@ -26,8 +25,9 @@ def test_exact(model, attribute_name, value):
             return _test
     else:
         field = get_model_field(model, attribute_name)
-        # convert value to the correct python type for this field
-        typed_value = field.to_python(value)
+        # convert value to the correct python type
+        typed_value = convert_raw_value(field, value)
+
         # just a plain Python value = do a normal equality check
         return lambda obj: extract_field_value(obj, attribute_name) == typed_value
 
@@ -72,7 +72,7 @@ def test_icontains(model, attribute_name, value):
 
 def test_lt(model, attribute_name, value):
     field = get_model_field(model, attribute_name)
-    match_value = field.to_python(value)
+    match_value = convert_raw_value(field, value)
 
     def _test(obj):
         val = extract_field_value(obj, attribute_name)
@@ -83,7 +83,7 @@ def test_lt(model, attribute_name, value):
 
 def test_lte(model, attribute_name, value):
     field = get_model_field(model, attribute_name)
-    match_value = field.to_python(value)
+    match_value = convert_raw_value(field, value)
 
     def _test(obj):
         val = extract_field_value(obj, attribute_name)
@@ -94,7 +94,7 @@ def test_lte(model, attribute_name, value):
 
 def test_gt(model, attribute_name, value):
     field = get_model_field(model, attribute_name)
-    match_value = field.to_python(value)
+    match_value = convert_raw_value(field, value)
 
     def _test(obj):
         val = extract_field_value(obj, attribute_name)
@@ -105,7 +105,7 @@ def test_gt(model, attribute_name, value):
 
 def test_gte(model, attribute_name, value):
     field = get_model_field(model, attribute_name)
-    match_value = field.to_python(value)
+    match_value = convert_raw_value(field, value)
 
     def _test(obj):
         val = extract_field_value(obj, attribute_name)
@@ -116,7 +116,7 @@ def test_gte(model, attribute_name, value):
 
 def test_in(model, attribute_name, value_list):
     field = get_model_field(model, attribute_name)
-    match_values = set(field.to_python(val) for val in value_list)
+    match_values = set(convert_raw_value(field, val) for val in value_list)
     return lambda obj: extract_field_value(obj, attribute_name) in match_values
 
 
@@ -166,8 +166,8 @@ def test_iendswith(model, attribute_name, value):
 
 def test_range(model, attribute_name, range_val):
     field = get_model_field(model, attribute_name)
-    start_val = field.to_python(range_val[0])
-    end_val = field.to_python(range_val[1])
+    start_val = convert_raw_value(field, range_val[0])
+    end_val = convert_raw_value(field, range_val[1])
 
     def _test(obj):
         val = extract_field_value(obj, attribute_name)
