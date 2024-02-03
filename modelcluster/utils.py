@@ -1,6 +1,15 @@
+import datetime
 from functools import lru_cache
 from django.core.exceptions import FieldDoesNotExist
-from django.db.models import ManyToManyField, ManyToManyRel
+from django.db.models import (
+    DateField,
+    DateTimeField,
+    ManyToManyField,
+    ManyToManyRel,
+    TimeField,
+)
+
+from modelcluster import datetime_utils as dt_utils
 
 REL_DELIMETER = "__"
 
@@ -10,7 +19,7 @@ class ManyToManyTraversalError(ValueError):
 
 
 class TraversedRelationship:
-    __slots__ = ['from_model', 'field']
+    __slots__ = ["from_model", "field"]
 
     def __init__(self, from_model, field):
         self.from_model = from_model
@@ -32,45 +41,83 @@ def get_model_field(model, name):
     double-underscores (`'__'`) to indicate relationship traversal - in which
     case, the model field will be lookuped up from the related model.
 
-    Multiple traversals for the same field are supported, but at this
-    moment in time, only traversal of many-to-one and one-to-one relationships
-    is supported.
+    Multiple traversals for the same field are supported, but at this moment
+    in time, only traversal of many-to-one and one-to-one relationships is
+    supported.
 
     Details of any relationships traversed in order to reach the returned
-    field are made available as `field.traversals`. The value is a tuple of
+    field are made available as ``field.traversals``. The value is a tuple of
     ``TraversedRelationship`` instances.
 
+    If ``name`` happens to end with ``'__date'``, ``'__time'``, ``'_hour'``, or
+    any of the other derivative expressions that Django supports for date,
+    time and datetime fields, a ``_convert_raw``  attribute will be added to
+    the return value, referencing a callable that should be used to convert
+    comparison values to the correct type instead of the field's
+    ``to_python()`` method.
+
     Raises ``FieldDoesNotExist`` if the name cannot be mapped to a model field.
+
+    Raises ``ManyToManyTraversalError`` if a many-to-many relationship is
+    encountered.
     """
     subject_model = model
     traversals = []
     field = None
-    for field_name in name.split(REL_DELIMETER):
+    segments = name.split(REL_DELIMETER)
+    for i, field_name in enumerate(segments):
 
         if field is not None:
             if isinstance(field, (ManyToManyField, ManyToManyRel)):
                 raise ManyToManyTraversalError(
-                    "The lookup '{name}' from {model} cannot be replicated "
-                    "by modelcluster, because the '{field_name}' "
-                    "relationship from {subject_model} is a many-to-many, "
-                    "and traversal is only supported for one-to-one or "
-                    "many-to-one relationships."
-                    .format(
+                    "The lookup '{name}' from {model} cannot be replicated by "
+                    "modelcluster, because the '{field_name}' relationship "
+                    "from {subject_model} is a many-to-many, and traversal is "
+                    "only supported for one-to-one or many-to-one "
+                    "relationships.".format(
                         name=name,
                         model=model,
                         field_name=field_name,
                         subject_model=subject_model,
                     )
                 )
-            if hasattr(field, "related_model"):
+
+            if (
+                i == len(segments)
+                and field_name in dt_utils.DATETIMEFIELD_DERIVATIVE_EXPRESSIONS
+            ):
+                if isinstance(field, DateTimeField):
+                    field._convert_raw = (
+                        dt_utils.COMPARISON_VALUE_CONVERTERS[field_name]
+                    )
+                    break
+                if (
+                    isinstance(field, DateField)
+                    and field_name in dt_utils.DATEFIELD_DERIVATIVE_EXPRESSIONS
+                ):
+                    field._convert_raw = (
+                        dt_utils.COMPARISON_VALUE_CONVERTERS[field_name]
+                    )
+                    break
+                if (
+                    isinstance(field, TimeField)
+                    and field_name in dt_utils.TIMEFIELD_DERIVATIVE_EXPRESSIONS
+                ):
+                    field._convert_raw = (
+                        dt_utils.COMPARISON_VALUE_CONVERTERS[field_name]
+                    )
+                    break
+
+            if getattr(field, "related_model", None):
                 traversals.append(TraversedRelationship(subject_model, field))
                 subject_model = field.related_model
+
         try:
             field = subject_model._meta.get_field(field_name)
-        except FieldDoesNotExist:
+        except FieldDoesNotExist as e:
             if field_name.endswith("_id"):
                 field = subject_model._meta.get_field(field_name[:-3]).target_field
-            raise
+            raise e
 
     field.traversals = tuple(traversals)
     return field
@@ -80,7 +127,8 @@ def extract_field_value(obj, key, pk_only=False, suppress_fielddoesnotexist=Fals
     """
     Attempts to extract a field value from ``obj`` matching the ``key`` - which,
     can contain double-underscores (`'__'`) to indicate traversal of relationships
-    to related objects.
+    to related objects, and may also include `'__day'`, `'__hour'` and other
+    derivative expressions that Django supports for date, time and datetime fields.
 
     For keys that specify ``ForeignKey`` or ``OneToOneField`` field values, full
     related objects are returned by default. If only the primary key values are
@@ -92,8 +140,19 @@ def extract_field_value(obj, key, pk_only=False, suppress_fielddoesnotexist=Fals
     to get ``None`` values instead.
     """
     source = obj
-    for attr in key.split(REL_DELIMETER):
-        if hasattr(source, attr):
+    segments = key.split(REL_DELIMETER)
+    value = None
+    for i, attr in enumerate(segments, start=1):
+        if (
+            i > 1
+            and i == len(segments)
+            and isinstance(
+                value, (None, datetime.datetime, datetime.date, datetime.time)
+            )
+        ):
+            # Support derivative expressions for the last segment
+            return dt_utils.derive_from_value(value, attr)
+        elif hasattr(source, attr):
             value = getattr(source, attr)
             source = value
             continue
@@ -105,7 +164,7 @@ def extract_field_value(obj, key, pk_only=False, suppress_fielddoesnotexist=Fals
                     name=attr, model=type(source)
                 )
             )
-    if pk_only and hasattr(value, 'pk'):
+    if pk_only and hasattr(value, "pk"):
         return value.pk
     return value
 
@@ -121,14 +180,16 @@ def sort_by_fields(items, fields):
     for key in reversed(fields):
         # Check if this key has been reversed
         reverse = False
-        if key[0] == '-':
+        if key[0] == "-":
             reverse = True
             key = key[1:]
 
         def get_sort_value(item):
             # Use a tuple of (v is not None, v) as the key, to ensure that None sorts before other values,
             # as comparing directly with None breaks on python3
-            value = extract_field_value(item, key, pk_only=True, suppress_fielddoesnotexist=True)
+            value = extract_field_value(
+                item, key, pk_only=True, suppress_fielddoesnotexist=True
+            )
             return (value is not None, value)
 
         # Sort items
