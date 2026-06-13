@@ -325,6 +325,11 @@ def fake_queryset_safe(method=None, *, as_name=None):
     """
 
     def _decorator(decorated_method):
+        if as_name and as_name in FakeQuerySet.__dict__:
+            raise ValueError(
+                "fake_queryset_safe(as_name=%r) conflicts with FakeQuerySet.%s"
+                % (as_name, as_name)
+            )
         setattr(decorated_method, FAKE_QUERYSET_SAFE_METHOD_ATTR, True)
         setattr(
             decorated_method,

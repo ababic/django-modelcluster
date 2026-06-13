@@ -6,6 +6,7 @@ import itertools
 from django.test import TestCase
 from django.db import IntegrityError
 from django.db.models import Prefetch, Q
+from django.db import models
 
 from modelcluster.models import get_all_child_relations
 from modelcluster.queryset import FakeQuerySet, get_fake_queryset_for_model
@@ -322,6 +323,19 @@ class ClusterTest(TestCase):
             ["John Lennon", "Paul McCartney"],
             [member.name for member in beatles.members.with_name_uppercase()],
         )
+
+    def test_fake_queryset_safe_alias_conflict_raises_error(self):
+        from modelcluster.queryset import fake_queryset_safe
+
+        with self.assertRaisesMessage(
+            ValueError,
+            "fake_queryset_safe(as_name='filter') conflicts with FakeQuerySet.filter",
+        ):
+
+            class ConflictingAliasQuerySet(models.QuerySet):
+                @fake_queryset_safe(as_name="filter")
+                def fake_filter_alias(self):
+                    return self
 
     def test_values_list(self):
         beatles = Band(
