@@ -1,6 +1,7 @@
 from __future__ import unicode_literals
 
 import re
+import inspect
 
 from django.core.exceptions import FieldDoesNotExist
 from django.db.models import Model, Q, prefetch_related_objects
@@ -325,7 +326,8 @@ def fake_queryset_safe(method=None, *, as_name=None):
     """
 
     def _decorator(decorated_method):
-        if as_name and as_name in FakeQuerySet.__dict__:
+        existing_attr = inspect.getattr_static(FakeQuerySet, as_name, None) if as_name else None
+        if as_name and callable(existing_attr):
             raise ValueError(
                 "fake_queryset_safe(as_name=%r) conflicts with FakeQuerySet.%s"
                 % (as_name, as_name)
