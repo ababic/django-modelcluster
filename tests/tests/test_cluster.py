@@ -8,7 +8,7 @@ from django.db import IntegrityError
 from django.db.models import Prefetch, Q
 
 from modelcluster.models import get_all_child_relations
-from modelcluster.queryset import FakeQuerySet
+from modelcluster.queryset import FakeQuerySet, get_fake_queryset_for_model
 from modelcluster.utils import ManyToManyTraversalError
 
 from tests.models import (
@@ -255,6 +255,62 @@ class ClusterTest(TestCase):
 
         self.assertEqual(beatles.albums.filter(label__range=7).count(), 1)
         self.assertEqual(beatles.albums.exclude(label__range=7).count(), 2)
+
+    def test_decorated_queryset_helpers_available_on_fake_queryset(self):
+        beatles = Band(
+            name="The Beatles",
+            members=[
+                BandMember(name="John Lennon"),
+                BandMember(name="Paul McCartney"),
+                BandMember(name="Ringo Starr"),
+            ],
+        )
+
+        self.assertEqual(
+            ["Paul McCartney"], [member.name for member in beatles.members.named_paul()]
+        )
+        self.assertEqual(
+            ["Paul McCartney"],
+            [member.name for member in beatles.members.names_starting_with("Paul")],
+        )
+
+    def test_undecorated_queryset_helpers_not_available_on_fake_queryset(self):
+        beatles = Band(
+            name="The Beatles",
+            members=[BandMember(name="John Lennon"), BandMember(name="Paul McCartney")],
+        )
+
+        self.assertRaises(AttributeError, lambda: beatles.members.with_name_uppercase())
+
+    def test_fake_queryset_factory_from_instances(self):
+        queryset = FakeQuerySet.from_instances(
+            [BandMember(name="John Lennon"), BandMember(name="Paul McCartney")]
+        )
+        self.assertIsNot(type(queryset), FakeQuerySet)
+        self.assertEqual(
+            ["Paul McCartney"], [member.name for member in queryset.named_paul()]
+        )
+
+        empty_queryset = FakeQuerySet.from_instances([], model=BandMember)
+        self.assertEqual([], list(empty_queryset.named_paul()))
+
+        self.assertRaises(ValueError, lambda: FakeQuerySet.from_instances([]))
+        self.assertRaises(
+            TypeError,
+            lambda: FakeQuerySet.from_instances(
+                [BandMember(name="Paul McCartney")], model=Band
+            ),
+        )
+
+    def test_get_fake_queryset_for_model_uses_decorated_helpers(self):
+        queryset = get_fake_queryset_for_model(
+            BandMember, [BandMember(name="John Lennon"), BandMember(name="Paul McCartney")]
+        )
+
+        self.assertEqual(type(queryset).__name__, "FakeBandMemberQuerySet")
+        self.assertEqual(
+            ["Paul McCartney"], [member.name for member in queryset.named_paul()]
+        )
 
     def test_values_list(self):
         beatles = Band(

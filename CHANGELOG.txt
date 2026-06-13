@@ -1,6 +1,10 @@
 Changelog
 =========
 
+Unreleased
+~~~~~~~~~~
+* Add decorator-based registration for exposing custom QuerySet helper methods on model-specific FakeQuerySet instances.
+
 6.5 (01.05.2026)
 ~~~~~~~~~~~~~~~~
 * Preliminary Django 6.1 support (Sage Abdullah)

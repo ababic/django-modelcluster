@@ -62,6 +62,41 @@ But what if you could? There are all sorts of scenarios where you might want to 
 For more examples, see the unit tests.
 
 
+Custom QuerySet helpers on in-memory relations
+----------------------------------------------
+
+Custom ``QuerySet`` helper methods can be made available on in-memory relation querysets
+by decorating methods with ``fake_queryset_safe``:
+
+.. code-block:: python
+
+ from django.db import models
+ from modelcluster.queryset import fake_queryset_safe
+
+ class BandMemberQuerySet(models.QuerySet):
+     @fake_queryset_safe
+     def named_paul(self):
+         return self.filter(name__contains="Paul")
+
+     # Not decorated: remains database-only
+     def with_name_uppercase(self):
+         return self.extra(select={"name_upper": "UPPER(name)"})
+
+ class BandMember(models.Model):
+     objects = BandMemberQuerySet.as_manager()
+     band = ParentalKey("Band", related_name="members", on_delete=models.CASCADE)
+     name = models.CharField(max_length=255)
+
+ >>> beatles = Band(name="The Beatles")
+ >>> beatles.members = [BandMember(name="John Lennon"), BandMember(name="Paul McCartney")]
+ >>> [member.name for member in beatles.members.named_paul()]
+ ['Paul McCartney']
+
+When you need to construct model-aware in-memory querysets directly, use
+``FakeQuerySet.from_instances(...)`` or ``get_fake_queryset_for_model(...)`` from
+``modelcluster.queryset``.
+
+
 Many-to-many relations
 ----------------------
 

@@ -8,6 +8,7 @@ from taggit.models import TaggedItemBase
 
 from modelcluster.fields import ParentalKey, ParentalManyToManyField
 from modelcluster.models import ClusterableModel
+from modelcluster.queryset import fake_queryset_safe
 
 
 class Band(ClusterableModel):
@@ -17,7 +18,22 @@ class Band(ClusterableModel):
         return self.name
 
 
+class BandMemberQuerySet(models.QuerySet):
+    @fake_queryset_safe
+    def named_paul(self):
+        return self.filter(name__contains="Paul")
+
+    @fake_queryset_safe
+    def names_starting_with(self, prefix):
+        return self.filter(name__startswith=prefix)
+
+    def with_name_uppercase(self):
+        return self.extra(select={"name_upper": "UPPER(name)"})
+
+
 class BandMember(models.Model):
+    objects = BandMemberQuerySet.as_manager()
+
     band = ParentalKey("Band", related_name="members", on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
     favourite_restaurant = models.ForeignKey(

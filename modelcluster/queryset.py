@@ -313,6 +313,68 @@ FILTER_EXPRESSION_TOKENS = {
 }
 
 
+FAKE_QUERYSET_SAFE_METHOD_ATTR = "_modelcluster_fake_queryset_safe_method"
+_registered_fake_queryset_classes = {}
+_generated_fake_queryset_classes = {}
+
+
+def fake_queryset_safe(method):
+    """
+    Mark a QuerySet helper method as safe to run against FakeQuerySet instances.
+    """
+    setattr(method, FAKE_QUERYSET_SAFE_METHOD_ATTR, True)
+    return method
+
+
+def register_fake_queryset(model):
+    """
+    Register a custom FakeQuerySet subclass for a model.
+    """
+
+    def _decorator(fake_queryset_class):
+        _registered_fake_queryset_classes[model] = fake_queryset_class
+        return fake_queryset_class
+
+    return _decorator
+
+
+def _get_safe_fake_queryset_methods(queryset_class):
+    methods = {}
+    for cls in reversed(queryset_class.__mro__):
+        for name, method in cls.__dict__.items():
+            if getattr(method, FAKE_QUERYSET_SAFE_METHOD_ATTR, False):
+                methods[name] = method
+    return methods
+
+
+def _get_queryset_class_for_model(model):
+    manager = model._default_manager
+    return getattr(manager, "_queryset_class", manager.get_queryset().__class__)
+
+
+def get_fake_queryset_class_for_model(model):
+    registered_class = _registered_fake_queryset_classes.get(model)
+    if registered_class is not None:
+        return registered_class
+
+    generated_class = _generated_fake_queryset_classes.get(model)
+    if generated_class is not None:
+        return generated_class
+
+    queryset_class = _get_queryset_class_for_model(model)
+    safe_methods = _get_safe_fake_queryset_methods(queryset_class)
+    if not safe_methods:
+        return FakeQuerySet
+
+    generated_class = type("Fake%sQuerySet" % model.__name__, (FakeQuerySet,), safe_methods)
+    _generated_fake_queryset_classes[model] = generated_class
+    return generated_class
+
+
+def get_fake_queryset_for_model(model, results):
+    return get_fake_queryset_class_for_model(model)(model, results)
+
+
 def _build_test_function_from_filter(model, key_clauses, val):
     # Translate a filter kwarg rule (e.g. foo__bar__exact=123) into a function which can
     # take a model instance and return a boolean indicating whether it passes the rule
@@ -396,6 +458,21 @@ class FlatValuesListIterable(FakeQuerySetIterable):
 
 
 class FakeQuerySet(object):
+    @classmethod
+    def from_instances(cls, instances, model=None):
+        results = list(instances)
+        if model is None:
+            if not results:
+                raise ValueError("Cannot infer model from an empty instance list.")
+            model = results[0].__class__
+        elif any(not isinstance(instance, model) for instance in results):
+            raise TypeError("All instances must be of type %s." % model.__name__)
+
+        if cls is FakeQuerySet:
+            return get_fake_queryset_for_model(model, results)
+
+        return cls(model, results)
+
     def __init__(self, model, results):
         self.model = model
         self.results = results
@@ -407,7 +484,7 @@ class FakeQuerySet(object):
         return self
 
     def get_clone(self, results=None):
-        new = FakeQuerySet(self.model, results if results is not None else self.results)
+        new = type(self)(self.model, results if results is not None else self.results)
         new.dict_fields = self.dict_fields
         new.tuple_fields = self.tuple_fields
         new.iterable_class = self.iterable_class
