@@ -326,17 +326,18 @@ def fake_queryset_safe(method=None, *, as_name=None):
     """
 
     def _decorator(decorated_method):
-        existing_attr = inspect.getattr_static(FakeQuerySet, as_name, None) if as_name else None
-        if as_name and callable(existing_attr):
+        fake_method_name = as_name or decorated_method.__name__
+        existing_attr = inspect.getattr_static(FakeQuerySet, fake_method_name, None)
+        if callable(existing_attr):
             raise ValueError(
                 "fake_queryset_safe(as_name=%r) conflicts with FakeQuerySet.%s"
-                % (as_name, as_name)
+                % (fake_method_name, fake_method_name)
             )
         setattr(decorated_method, FAKE_QUERYSET_SAFE_METHOD_ATTR, True)
         setattr(
             decorated_method,
             FAKE_QUERYSET_SAFE_METHOD_NAME_ATTR,
-            as_name or decorated_method.__name__,
+            fake_method_name,
         )
         return decorated_method
 

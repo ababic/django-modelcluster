@@ -337,6 +337,19 @@ class ClusterTest(TestCase):
                 def fake_filter_alias(self):
                     return self
 
+    def test_fake_queryset_safe_default_name_conflict_raises_error(self):
+        from modelcluster.queryset import fake_queryset_safe
+
+        with self.assertRaisesMessage(
+            ValueError,
+            "fake_queryset_safe(as_name='filter') conflicts with FakeQuerySet.filter",
+        ):
+
+            class ConflictingMethodNameQuerySet(models.QuerySet):
+                @fake_queryset_safe
+                def filter(self, *args, **kwargs):
+                    return self
+
     def test_values_list(self):
         beatles = Band(
             name="The Beatles",
