@@ -78,9 +78,14 @@ by decorating methods with ``fake_queryset_safe``:
      def named_paul(self):
          return self.filter(name__contains="Paul")
 
-     # Not decorated: remains database-only
+    # Database implementation
      def with_name_uppercase(self):
          return self.extra(select={"name_upper": "UPPER(name)"})
+
+    # In-memory implementation for FakeQuerySet only
+    @fake_queryset_safe(as_name="with_name_uppercase")
+    def with_name_uppercase_in_memory(self):
+        return self
 
  class BandMember(models.Model):
      objects = BandMemberQuerySet.as_manager()
@@ -91,6 +96,9 @@ by decorating methods with ``fake_queryset_safe``:
  >>> beatles.members = [BandMember(name="John Lennon"), BandMember(name="Paul McCartney")]
  >>> [member.name for member in beatles.members.named_paul()]
  ['Paul McCartney']
+
+``as_name=...`` allows you to keep the original database-only method while attaching a
+separate in-memory implementation to the generated FakeQuerySet under that method name.
 
 When you need to construct model-aware in-memory querysets directly, use
 ``FakeQuerySet.from_instances(...)`` or ``get_fake_queryset_for_model(...)`` from

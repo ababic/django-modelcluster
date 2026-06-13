@@ -280,7 +280,7 @@ class ClusterTest(TestCase):
             members=[BandMember(name="John Lennon"), BandMember(name="Paul McCartney")],
         )
 
-        self.assertRaises(AttributeError, lambda: beatles.members.with_name_uppercase())
+        self.assertRaises(AttributeError, lambda: beatles.members.db_only_helper())
 
     def test_fake_queryset_factory_from_instances(self):
         queryset = FakeQuerySet.from_instances(
@@ -310,6 +310,17 @@ class ClusterTest(TestCase):
         self.assertEqual(type(queryset).__name__, "FakeBandMemberQuerySet")
         self.assertEqual(
             ["Paul McCartney"], [member.name for member in queryset.named_paul()]
+        )
+
+    def test_fake_queryset_safe_alias_can_replace_db_method_name(self):
+        beatles = Band(
+            name="The Beatles",
+            members=[BandMember(name="John Lennon"), BandMember(name="Paul McCartney")],
+        )
+
+        self.assertEqual(
+            ["John Lennon", "Paul McCartney"],
+            [member.name for member in beatles.members.with_name_uppercase()],
         )
 
     def test_values_list(self):

@@ -27,8 +27,15 @@ class BandMemberQuerySet(models.QuerySet):
     def names_starting_with(self, prefix):
         return self.filter(name__startswith=prefix)
 
+    @fake_queryset_safe(as_name="with_name_uppercase")
+    def with_name_uppercase_in_memory(self):
+        return self
+
     def with_name_uppercase(self):
         return self.extra(select={"name_upper": "UPPER(name)"})
+
+    def db_only_helper(self):
+        return self.extra(select={"name_lower": "LOWER(name)"})
 
 
 class BandMember(models.Model):

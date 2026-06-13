@@ -4,6 +4,7 @@ Changelog
 Unreleased
 ~~~~~~~~~~
 * Add decorator-based registration for exposing custom QuerySet helper methods on model-specific FakeQuerySet instances.
+* Allow `fake_queryset_safe` to attach methods to generated FakeQuerySet classes under an alternative method name.
 
 6.5 (01.05.2026)
 ~~~~~~~~~~~~~~~~

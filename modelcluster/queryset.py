@@ -314,16 +314,29 @@ FILTER_EXPRESSION_TOKENS = {
 
 
 FAKE_QUERYSET_SAFE_METHOD_ATTR = "_modelcluster_fake_queryset_safe_method"
+FAKE_QUERYSET_SAFE_METHOD_NAME_ATTR = "_modelcluster_fake_queryset_safe_name"
 _registered_fake_queryset_classes = {}
 _generated_fake_queryset_classes = {}
 
 
-def fake_queryset_safe(method):
+def fake_queryset_safe(method=None, *, as_name=None):
     """
     Mark a QuerySet helper method as safe to run against FakeQuerySet instances.
     """
-    setattr(method, FAKE_QUERYSET_SAFE_METHOD_ATTR, True)
-    return method
+
+    def _decorator(decorated_method):
+        setattr(decorated_method, FAKE_QUERYSET_SAFE_METHOD_ATTR, True)
+        setattr(
+            decorated_method,
+            FAKE_QUERYSET_SAFE_METHOD_NAME_ATTR,
+            as_name or decorated_method.__name__,
+        )
+        return decorated_method
+
+    if method is None:
+        return _decorator
+
+    return _decorator(method)
 
 
 def register_fake_queryset(model):
@@ -343,7 +356,8 @@ def _get_safe_fake_queryset_methods(queryset_class):
     for cls in reversed(queryset_class.__mro__):
         for name, method in cls.__dict__.items():
             if getattr(method, FAKE_QUERYSET_SAFE_METHOD_ATTR, False):
-                methods[name] = method
+                fake_method_name = getattr(method, FAKE_QUERYSET_SAFE_METHOD_NAME_ATTR, name)
+                methods[fake_method_name] = method
     return methods
 
 
